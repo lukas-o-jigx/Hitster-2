@@ -183,7 +183,7 @@ function loadCard(n){
   setIcon(false);
   if(history.replaceState) history.replaceState(null,"","#"+String(n).padStart(3,"0"));
   spCur = null; spPos = 0; spDur = 0; spPlaying = false; clearInterval(tick);
-  if(src==="sp"){ status(spAuth ? "Ťukni na desku a hádej" : "Přihlas se ke Spotify (⚙)"); spFind(n).catch(()=>{}); return; }
+  if(src==="sp"){ if(spAuth){ status("Ťukni na desku a hádej"); spFind(n).catch(()=>{}); } else { status("Přihlas se ke Spotify (⚙)"); setTimeout(openSheet,300); } return; }
   if(ready){ player.cueVideoById(c.v); status("Ťukni na desku a hádej"); }
   else status("Načítám přehrávač…");
 }
@@ -287,7 +287,7 @@ const SPOTIFY_CLIENT_ID = "__SPOTIFY_CLIENT_ID__";
 const REDIR = location.origin + location.pathname;
 const SCOPES = "user-modify-playback-state user-read-playback-state";
 const ls = { get(k){ try{return localStorage.getItem(k);}catch(e){return null;} }, set(k,v){ try{ v==null?localStorage.removeItem(k):localStorage.setItem(k,v);}catch(e){} } };
-let src = ls.get("src") || "yt";
+let src = ls.get("src") || "sp";
 let spAuth = (()=>{ try{ return JSON.parse(ls.get("spAuth")||"null"); }catch(e){ return null; } })();
 let spUris = (()=>{ try{ return JSON.parse(ls.get("spUris")||"{}"); }catch(e){ return {}; } })();
 let spCur = null, spPlaying = false, spPos = 0, spDur = 0, spT0 = 0, spPoll = null;
