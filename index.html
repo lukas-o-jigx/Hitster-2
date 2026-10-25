@@ -77,6 +77,13 @@ a.ext{color:var(--accent)}
 .sheet select,.sheet input{width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:16px var(--body)}
 .note{font-size:14px;color:var(--muted);margin:0}
 .note b{color:var(--fg)}
+.chk{display:flex;flex-direction:column;gap:8px}
+.miss{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:12px;padding:10px}
+.miss .h{font:600 14px var(--body)}
+.miss .res{display:flex;flex-direction:column;gap:6px}
+.miss .res button{text-align:left;padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:14px var(--body);cursor:pointer}
+.miss .res button.on{border-color:#1ed760;color:#1ed760}
+.okline{color:#1ed760;font-weight:600}
 </style>
 </head>
 <body>
@@ -140,6 +147,8 @@ a.ext{color:var(--accent)}
         <button class="btn primary" id="spLogin">Přihlásit Spotify</button>
         <label for="dev">Kde má hrát</label>
         <div class="row"><select id="dev"><option value="">Aktivní zařízení</option></select><button class="btn" id="devRefresh" style="flex:none">↻</button></div>
+        <button class="btn" id="chkBtn">Zkontrolovat všechny písničky na Spotify</button>
+        <div class="chk" id="chk"></div>
         <p class="note"><b>Aby nebylo nic vidět:</b> pusť hudbu na jiné zařízení (TV, chytrý reproduktor, notebook nebo druhý mobil se Spotify, položený displejem dolů) a na tomhle mobilu Spotify úplně zavři. Pak se tu název nikde neukáže.</p>
       </div>
     </div>
@@ -182,7 +191,8 @@ function loadCard(n){
   $("ring").style.strokeDashoffset = 301.6; $("time").textContent = "";
   setIcon(false);
   if(history.replaceState) history.replaceState(null,"","#"+String(n).padStart(3,"0"));
-  spCur = null; spPos = 0; spDur = 0; spPlaying = false; clearInterval(tick);
+  spCur = null; spPos = 0; spDur = 0; spPlaying = false; cardMode = null; clearInterval(tick);
+  if(ready && player.stopVideo) try{ player.stopVideo(); }catch(e){}
   if(src==="sp"){ if(spAuth){ status("Ťukni na desku a hádej"); spFind(n).catch(()=>{}); } else { status("Přihlas se ke Spotify (⚙)"); setTimeout(openSheet,300); } return; }
   if(ready){ player.cueVideoById(c.v); status("Ťukni na desku a hádej"); }
   else status("Načítám přehrávač…");
@@ -204,7 +214,7 @@ function onYouTubeIframeAPIReady(){
     width:200,height:200,
     playerVars:{playsinline:1,controls:0,disablekb:1,rel:0,fs:0,iv_load_policy:3},
     events:{
-      onReady:()=>{ ready = true; if(current && src!=="sp"){ player.cueVideoById(CARDS[current-1].v); status("Ťukni na desku a hádej"); if(pendingPlay){pendingPlay=false; player.playVideo();} } },
+      onReady:()=>{ ready = true; if(pendingPlay && cardMode==="yt" && current){ pendingPlay=false; player.loadVideoById(CARDS[current-1].v); } if(current && src!=="sp"){ player.cueVideoById(CARDS[current-1].v); status("Ťukni na desku a hádej"); if(pendingPlay){pendingPlay=false; player.playVideo();} } },
       onStateChange:e=>{
         const playing = e.data === YT.PlayerState.PLAYING;
         setIcon(playing);
@@ -232,12 +242,12 @@ function startTick(){
 
 $("play").onclick = ()=>{
   keepAwake(); maskMedia();
-  if(src==="sp"){ if(spPlaying) spPause(); else spPlayCurrent(false).catch(e=>status("Spotify chyba: "+e.message,true)); return; }
+  if(src==="sp" && cardMode!=="yt"){ if(spPlaying) spPause(); else spPlayCurrent(false).catch(e=>status("Spotify chyba: "+e.message,true)); return; }
   if(!ready){ pendingPlay = true; status("Načítám přehrávač…"); return; }
   const s = player.getPlayerState();
   if(s === YT.PlayerState.PLAYING) player.pauseVideo(); else player.playVideo();
 };
-$("restart").onclick = ()=>{ if(src==="sp"){ spPlayCurrent(true).catch(e=>status("Spotify chyba: "+e.message,true)); return; } if(ready){ player.seekTo(0,true); player.playVideo(); } };
+$("restart").onclick = ()=>{ if(src==="sp" && cardMode!=="yt"){ spPlayCurrent(true).catch(e=>status("Spotify chyba: "+e.message,true)); return; } if(ready){ player.seekTo(0,true); player.playVideo(); } };
 $("revealBtn").onclick = ()=>{
   const r = $("reveal"); r.hidden = !r.hidden;
   $("revealBtn").textContent = r.hidden ? "Odkrýt" : "Skrýt";
@@ -289,7 +299,9 @@ const SCOPES = "user-modify-playback-state user-read-playback-state";
 const ls = { get(k){ try{return localStorage.getItem(k);}catch(e){return null;} }, set(k,v){ try{ v==null?localStorage.removeItem(k):localStorage.setItem(k,v);}catch(e){} } };
 let src = ls.get("src2") || "sp";
 let spAuth = (()=>{ try{ return JSON.parse(ls.get("spAuth")||"null"); }catch(e){ return null; } })();
-let spUris = (()=>{ try{ return JSON.parse(ls.get("spUris")||"{}"); }catch(e){ return {}; } })();
+const SP_FIXED = {};
+let cardMode = null;
+let spUris = (()=>{ try{ return JSON.parse(ls.get("spUris2")||"{}"); }catch(e){ return {}; } })();
 let spCur = null, spPlaying = false, spPos = 0, spDur = 0, spT0 = 0, spPoll = null;
 const cid = ()=> (ls.get("spCid")||"").trim() || ((SPOTIFY_CLIENT_ID && !SPOTIFY_CLIENT_ID.startsWith("__")) ? SPOTIFY_CLIENT_ID : "");
 const saveAuth = ()=> ls.set("spAuth", spAuth ? JSON.stringify(spAuth) : null);
@@ -336,24 +348,57 @@ async function api(method, path, body){
   return r;
 }
 const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
-async function spFind(n){
-  if(spUris[n]) return spUris[n];
+function cleanArtist(a){ return a.split(/\s*(?:&|feat\.?|ft\.?|,| x | a jeho | and )\s*/i)[0].trim(); }
+function cleanTitle(t){ return t.replace(/\(.*?\)|\[.*?\]/g,"").replace(/\s+-\s+.*$/,"").trim(); }
+function artistOk(it, artistFull){
+  const names = artistFull.split(/\s*(?:&|feat\.?|ft\.?|,| x )\s*/i).map(norm).filter(Boolean);
+  return it.artists.some(a=>{ const an = norm(a.name); return names.some(n=> an===n || an.includes(n) || n.includes(an)); });
+}
+function titleSim(a,b){
+  a = norm(cleanTitle(a)); b = norm(cleanTitle(b));
+  if(!a||!b) return 0;
+  if(a===b) return 1;
+  if(a.startsWith(b)||b.startsWith(a)) return .9;
+  if(a.includes(b)||b.includes(a)) return .8;
+  const A = new Set(a.split(" ")), B = b.split(" ");
+  const inter = B.filter(w=>A.has(w)).length;
+  return inter / Math.max(A.size, B.length);
+}
+const BAD = /(live|karaoke|instrumental|remix|cover|acoustic|unplugged|edit\b|version|verze|naživo)/i;
+function pick(items, c){
+  let best = null, bs = -1;
+  for(const it of items){
+    if(!artistOk(it, c.a)) continue;
+    const ts = titleSim(it.name, c.t);
+    if(ts < .5) continue;
+    const sc = ts*10 + (BAD.test(it.name) && !BAD.test(c.t) ? -3 : 0) + (it.popularity||0)/50;
+    if(sc > bs){ bs = sc; best = it; }
+  }
+  return best;
+}
+async function spSearch(q, limit){
+  const r = await api("GET", "/search?type=track&limit="+(limit||10)+"&market=from_token&q="+encodeURIComponent(q));
+  if(r.status===429){ const w = (+r.headers.get("Retry-After")||2)*1000; await new Promise(z=>setTimeout(z,w)); return spSearch(q,limit); }
+  if(!r.ok) return [];
+  return ((await r.json()).tracks||{}).items || [];
+}
+async function spFind(n, force){
+  if(!force){
+    if(spUris[n]) return spUris[n];
+    if(SP_FIXED[n]) return SP_FIXED[n];
+  }
   const c = CARDS[n-1];
-  const artist = c.a.split(/\s*(?:&|feat\.?|ft\.?|,| x )\s*/i)[0];
-  const title = c.t.replace(/\(.*?\)/g,"").trim();
-  const tries = [`track:"${title}" artist:"${artist}"`, `${title} ${artist}`, `${c.t} ${c.a}`];
+  const artist = cleanArtist(c.a), title = cleanTitle(c.t);
+  const strip = x => x.normalize("NFD").replace(/[̀-ͯ]/g,"");
+  const tries = [`track:"${title}" artist:"${artist}"`, `${title} ${artist}`, `track:"${strip(title)}" artist:"${strip(artist)}"`, `${strip(title)} ${strip(artist)}`, `${c.t} ${c.a}`, `artist:"${artist}"`];
   for(const q of tries){
-    const r = await api("GET", "/search?type=track&limit=10&market=from_token&q="+encodeURIComponent(q));
-    if(!r.ok) continue;
-    const items = ((await r.json()).tracks||{}).items || [];
-    if(!items.length) continue;
-    const na = norm(artist), nt = norm(title);
-    const score = it => (it.artists.some(a=>norm(a.name).includes(na)||na.includes(norm(a.name)))?2:0) + (norm(it.name).startsWith(nt)||nt.startsWith(norm(it.name))?2:0) + (/(live|karaoke|instrumental|remix|cover)/i.test(it.name)?-1:0);
-    items.sort((x,y)=>score(y)-score(x));
-    const best = items[0];
-    spUris[n] = {u:best.uri, d:best.duration_ms};
-    ls.set("spUris", JSON.stringify(spUris));
-    return spUris[n];
+    const items = await spSearch(q, 10);
+    const best = pick(items, c);
+    if(best){
+      spUris[n] = {u:best.uri, d:best.duration_ms, nm:best.artists.map(a=>a.name).join(", ")+" – "+best.name};
+      ls.set("spUris2", JSON.stringify(spUris));
+      return spUris[n];
+    }
   }
   return null;
 }
@@ -363,7 +408,7 @@ async function spPlayCurrent(fromStart){
   status("Hledám na Spotify…");
   let hit;
   try{ hit = await spFind(n); }catch(e){ if(e.message==="login"){ status("Přihlas se ke Spotify (⚙)", true); openSheet(); return; } throw e; }
-  if(!hit){ status("Na Spotify jsem ji nenašel. Přepni na YouTube (⚙).", true); return; }
+  if(!hit){ cardMode = "yt"; status("Na Spotify není – hraju z YouTube"); if(ready){ player.loadVideoById(CARDS[n-1].v); } else pendingPlay = true; return; }
   let r;
   if(spCur === hit.u && !fromStart) r = await api("PUT", "/me/player/play"+devParam());
   else r = await api("PUT", "/me/player/play"+devParam(), {uris:[hit.u], position_ms:0});
@@ -371,7 +416,7 @@ async function spPlayCurrent(fromStart){
     // no active device -> try first available
     const dr = await api("GET","/me/player/devices"); const ds = dr.ok ? (await dr.json()).devices : [];
     if(ds.length){ ls.set("spDev", ds[0].id); r = await api("PUT", "/me/player/play?device_id="+encodeURIComponent(ds[0].id), {uris:[hit.u], position_ms:0}); }
-    else { status("Otevři Spotify na zařízení, kde má hrát (TV, reprák, notebook…), a zkus znovu.", true); return; }
+    else { status('Spotify spí. <a class="ext" href="spotify:">Otevři Spotify</a>, vrať se sem a ťukni znovu.', true); return; }
   }
   if(!r.ok && r.status !== 202){ let m=""; try{ m=(await r.json()).error.message; }catch(e){} status("Spotify: " + (m||r.status), true); return; }
   if(spCur !== hit.u || fromStart){ spPos = 0; }
@@ -395,7 +440,7 @@ function startSpTick(){
     if(src!=="sp" || !spCur) return;
     try{ const r = await api("GET","/me/player"); if(r.status!==200) return; const j = await r.json();
       if(!j.item || j.item.uri !== spCur) return;
-      spPos = j.progress_ms; spT0 = Date.now();
+      spPos = j.progress_ms; spT0 = Date.now(); if(j.item.duration_ms) spDur = j.item.duration_ms;
       if(j.is_playing !== spPlaying){ spPlaying = j.is_playing; setIcon(spPlaying); status(spPlaying?"Hraje… Kdy to vyšlo?":"Pozastaveno"); }
     }catch(e){}
   }, 4000);
@@ -438,10 +483,56 @@ $("cid").oninput = e=> ls.set("spCid", e.target.value.trim());
 $("spLogin").onclick = ()=>{ if(spAuth){ spAuth=null; saveAuth(); renderSettings(); } else spLogin(); };
 $("dev").onchange = e=> ls.set("spDev", e.target.value || null);
 $("devRefresh").onclick = loadDevices;
+let checking = false;
+async function checkAll(){
+  if(checking) return; if(!spAuth){ spLogin(); return; }
+  checking = true; const box = $("chk"); box.innerHTML = '<p class="note" id="chkP">Kontroluju…</p>';
+  const miss = [];
+  for(let n=1;n<=CARDS.length;n++){
+    $("chkP").textContent = `Kontroluju ${n}/${CARDS.length}…`;
+    let h = null; try{ h = await spFind(n); }catch(e){}
+    if(!h) miss.push(n);
+  }
+  checking = false;
+  renderMisses(miss);
+}
+function renderMisses(miss){
+  const box = $("chk");
+  box.innerHTML = miss.length ? `<p class="note"><b>${CARDS.length-miss.length}/${CARDS.length} nalezeno.</b> U těchhle vyber správnou verzi (nebo uprav hledání):</p>` : `<p class="note okline">Všech ${CARDS.length} písniček je na Spotify ✓</p>`;
+  miss.forEach(n=>{
+    const c = CARDS[n-1];
+    const d = document.createElement("div"); d.className = "miss";
+    d.innerHTML = `<div class="h">#${String(n).padStart(3,"0")} ${c.a} – ${c.t} (${c.y})</div><div class="row"><input value="${(c.a+" "+c.t).replace(/"/g,"&quot;")}"><button class="btn" style="flex:none">Hledat</button></div><div class="res"></div>`;
+    const inp = d.querySelector("input"), res = d.querySelector(".res");
+    const go = async ()=>{
+      res.innerHTML = '<span class="note">Hledám…</span>';
+      const items = await spSearch(inp.value, 10);
+      res.innerHTML = items.length ? "" : '<span class="note">Nic. Zkus jiný text.</span>';
+      items.forEach(it=>{
+        const b = document.createElement("button");
+        b.textContent = it.artists.map(a=>a.name).join(", ")+" – "+it.name;
+        b.onclick = ()=>{ spUris[n] = {u:it.uri, d:it.duration_ms, nm:b.textContent, m:1}; ls.set("spUris2", JSON.stringify(spUris)); res.querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); };
+        res.appendChild(b);
+      });
+    };
+    d.querySelector("button.btn").onclick = go; go();
+    box.appendChild(d);
+  });
+  const ex = document.createElement("button"); ex.className = "btn"; ex.textContent = "Zkopírovat seznam pro Clauda";
+  ex.onclick = async ()=>{ const out = {}; for(const k in spUris) out[k] = spUris[k].u.replace("spotify:track:",""); const t = JSON.stringify(out);
+    try{ await navigator.clipboard.writeText(t); ex.textContent = "Zkopírováno ✓ – vlož mi to do chatu"; }catch(e){ prompt("Zkopíruj:", t); } };
+  box.appendChild(ex);
+}
+$("chkBtn").onclick = checkAll;
 renderSettings();
 
 window.addEventListener("hashchange", ()=>{ const n = cardFromText(location.hash); if(n && n!==current) loadCard(n); });
-spHandleRedirect().finally(()=>{ const start = cardFromText(location.hash); if(start) loadCard(start); renderSettings(); });
+spHandleRedirect().then(redirected=>{
+  if(src==="sp" && !spAuth && !redirected){
+    let tried = false; try{ tried = sessionStorage.getItem("spTried")==="1"; sessionStorage.setItem("spTried","1"); }catch(e){}
+    if(!tried && cid()){ const n = cardFromText(location.hash); if(n) current = n; spLogin(); return; }
+  }
+}).finally(()=>{ const start = cardFromText(location.hash); if(start) loadCard(start); renderSettings(); });
 
 const tag = document.createElement("script"); tag.src = "https://www.youtube.com/iframe_api"; document.head.appendChild(tag);
 </script>
