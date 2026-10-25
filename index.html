@@ -150,6 +150,17 @@ function loadCard(n){
   else status("Načítám přehrávač…");
 }
 
+
+/* keep screen on + mask lock-screen media info */
+let wakeLock=null;
+async function keepAwake(){ try{ if('wakeLock' in navigator && !wakeLock){ wakeLock=await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release',()=>{wakeLock=null;}); } }catch(e){} }
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && $("record").classList.contains('playing')) keepAwake(); });
+function maskMedia(){
+  try{ if('mediaSession' in navigator){
+    navigator.mediaSession.metadata = new MediaMetadata({title:'Hitster CZ', artist:'Karta #'+String(current||0).padStart(3,'0'), album:'Hádej rok'});
+  } }catch(e){}
+}
+
 function onYouTubeIframeAPIReady(){
   player = new YT.Player("ytplayer",{
     width:200,height:200,
@@ -159,7 +170,7 @@ function onYouTubeIframeAPIReady(){
       onStateChange:e=>{
         const playing = e.data === YT.PlayerState.PLAYING;
         setIcon(playing);
-        if(playing){ status("Hraje… Kdy to vyšlo?"); startTick(); }
+        if(playing){ status("Hraje… Kdy to vyšlo?"); startTick(); keepAwake(); maskMedia(); setTimeout(maskMedia,800); setTimeout(maskMedia,2500); }
         else if(e.data === YT.PlayerState.PAUSED) status("Pozastaveno");
         else if(e.data === YT.PlayerState.ENDED){ status("Konec písničky"); }
       },
@@ -182,6 +193,7 @@ function startTick(){
 }
 
 $("play").onclick = ()=>{
+  keepAwake(); maskMedia();
   if(!ready){ pendingPlay = true; status("Načítám přehrávač…"); return; }
   const s = player.getPlayerState();
   if(s === YT.PlayerState.PLAYING) player.pauseVideo(); else player.playVideo();
