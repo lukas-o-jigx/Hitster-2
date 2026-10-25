@@ -133,8 +133,8 @@ a.ext{color:var(--accent)}
     <div id="spBox">
       <div style="display:flex;flex-direction:column;gap:12px">
         <div id="cidRow" hidden style="display:flex;flex-direction:column;gap:8px">
-          <label for="cid">Spotify Client ID</label>
-          <input id="cid" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="např. 3f2c…">
+          <label for="cid">Vlastní Client ID (nepovinné)</label>
+          <input id="cid" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="nech prázdné = výchozí">
         </div>
         <p class="note" id="spState">Nepřihlášeno</p>
         <button class="btn primary" id="spLogin">Přihlásit Spotify</button>
@@ -283,7 +283,7 @@ $("scanCancel").onclick = closeScanner;
 
 
 /* ================= SPOTIFY ================= */
-const SPOTIFY_CLIENT_ID = "__SPOTIFY_CLIENT_ID__";
+const SPOTIFY_CLIENT_ID = "a91ec3c30faa46138bf243004000742d";
 const REDIR = location.origin + location.pathname;
 const SCOPES = "user-modify-playback-state user-read-playback-state";
 const ls = { get(k){ try{return localStorage.getItem(k);}catch(e){return null;} }, set(k,v){ try{ v==null?localStorage.removeItem(k):localStorage.setItem(k,v);}catch(e){} } };
@@ -291,7 +291,7 @@ let src = ls.get("src2") || "sp";
 let spAuth = (()=>{ try{ return JSON.parse(ls.get("spAuth")||"null"); }catch(e){ return null; } })();
 let spUris = (()=>{ try{ return JSON.parse(ls.get("spUris")||"{}"); }catch(e){ return {}; } })();
 let spCur = null, spPlaying = false, spPos = 0, spDur = 0, spT0 = 0, spPoll = null;
-const cid = ()=> (SPOTIFY_CLIENT_ID && !SPOTIFY_CLIENT_ID.startsWith("__")) ? SPOTIFY_CLIENT_ID : (ls.get("spCid")||"").trim();
+const cid = ()=> (ls.get("spCid")||"").trim() || ((SPOTIFY_CLIENT_ID && !SPOTIFY_CLIENT_ID.startsWith("__")) ? SPOTIFY_CLIENT_ID : "");
 const saveAuth = ()=> ls.set("spAuth", spAuth ? JSON.stringify(spAuth) : null);
 const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
 
@@ -416,7 +416,7 @@ async function loadDevices(){
 function renderSettings(){
   $("srcSp").classList.toggle("on", src==="sp"); $("srcYt").classList.toggle("on", src==="yt");
   $("spBox").hidden = src!=="sp";
-  $("cidRow").hidden = !!(SPOTIFY_CLIENT_ID && !SPOTIFY_CLIENT_ID.startsWith("__"));
+  $("cidRow").hidden = false;
   $("cid").value = ls.get("spCid")||"";
   $("spState").textContent = spAuth ? "Přihlášeno ke Spotify ✓" : "Nepřihlášeno";
   $("spLogin").textContent = spAuth ? "Odhlásit" : "Přihlásit Spotify";
