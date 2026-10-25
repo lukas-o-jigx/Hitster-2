@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#16110d">
+<title>Hitster CZ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Figtree:wght@400;600&display=swap">
+<style>
+/* Layout: one screen, a spinning record in the middle, controls under it. Pub-at-night palette. */
+:root{
+  --bg:#16110d; --panel:#221a14; --fg:#f6ece0; --muted:#a8968a; --accent:#f2a33a; --vinyl:#0b0908; --line:#3a2e25;
+  --cat-a:#d23a3a; --cat-t:#3f9a62; --cat-m:#ef8a1e; --cat-s:#4f84c9;
+  --display:"Bricolage Grotesque",ui-rounded,system-ui,sans-serif;
+  --body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:16px/1.4 var(--body);
+  padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
+  display:flex;flex-direction:column;align-items:center;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+header{width:100%;max-width:440px;display:flex;justify-content:space-between;align-items:baseline}
+.brand{font:800 20px/1 var(--display);letter-spacing:.02em}
+.brand span{color:var(--accent)}
+.cardno{font:600 13px var(--body);color:var(--muted);letter-spacing:.12em;font-variant-numeric:tabular-nums}
+main{flex:1;width:100%;max-width:440px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px}
+.record{position:relative;width:min(78vw,320px);aspect-ratio:1;max-width:100%}
+.record svg{position:absolute;inset:0;width:100%;height:100%}
+.disc{position:absolute;inset:14px;border-radius:50%;
+  background:repeating-radial-gradient(circle at 50% 50%,#1a1512 0 2px,var(--vinyl) 2px 4px);
+  box-shadow:0 18px 40px rgba(0,0,0,.55),inset 0 0 0 1px #2b221b}
+.disc::after{content:"";position:absolute;inset:34%;border-radius:50%;background:var(--accent);box-shadow:inset 0 0 0 6px rgba(0,0,0,.18)}
+.playing .disc{animation:spin 2.2s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.playing .disc{animation:none}}
+.playbtn{position:absolute;inset:34%;border-radius:50%;border:0;background:transparent;color:#1b130c;cursor:pointer;display:grid;place-items:center;z-index:2}
+.playbtn svg{width:42%;height:42%;position:static}
+.playbtn:focus-visible{outline:3px solid var(--fg);outline-offset:4px}
+.ring-bg{stroke:var(--line)} .ring{stroke:var(--accent);transition:stroke-dashoffset .3s linear}
+.time{font:600 14px var(--body);color:var(--muted);font-variant-numeric:tabular-nums;text-align:center;min-height:20px}
+.status{font:500 15px var(--body);color:var(--muted);text-align:center;max-width:32ch;min-height:21px}
+.row{display:flex;gap:10px;width:100%}
+button.btn{flex:1;font:600 16px var(--body);padding:15px 14px;border-radius:14px;border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer}
+button.btn.primary{background:var(--accent);border-color:var(--accent);color:#1b130c}
+button.btn:active{transform:translateY(1px)}
+button.btn:focus-visible{outline:3px solid var(--fg);outline-offset:2px}
+.reveal{width:100%;border-radius:18px;padding:18px 18px 16px;background:var(--cat,var(--panel));color:#fff;text-align:center}
+.reveal .artist{font:600 15px var(--body);opacity:.9}
+.reveal .year{font:800 64px/1 var(--display);margin:6px 0 4px;font-variant-numeric:tabular-nums}
+.reveal .title{font:500 18px var(--body)}
+.hero{text-align:center;display:flex;flex-direction:column;gap:12px;align-items:center}
+.hero h1{font:800 34px/1.05 var(--display);margin:0;text-wrap:balance}
+.hero p{margin:0;color:var(--muted);max-width:30ch}
+#yt{position:fixed;left:0;bottom:0;width:200px;height:200px;opacity:.01;pointer-events:none;z-index:-1}
+.scanner{position:fixed;inset:0;background:#000;z-index:20;display:flex;flex-direction:column}
+.scanner video{flex:1;width:100%;object-fit:cover;min-height:0}
+.scanner .frame{position:absolute;left:50%;top:45%;width:64vw;max-width:300px;aspect-ratio:1;transform:translate(-50%,-50%);border:3px solid var(--accent);border-radius:20px;box-shadow:0 0 0 100vmax rgba(0,0,0,.45)}
+.scanner .bar{padding:16px max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));display:flex;flex-direction:column;gap:10px;background:#000}
+.scanner .hint{color:#ddd;text-align:center;font-size:15px}
+.err{color:#ffb4a8}
+a.ext{color:var(--accent)}
+</style>
+</head>
+<body>
+<header><div class="brand">HITSTER <span>CZ</span></div><div class="cardno" id="cardno"></div></header>
+
+<main id="home">
+  <div class="hero">
+    <h1>Naskenuj kartu a hádej rok</h1>
+    <p>Písnička se pustí naslepo. Název uvidíš až na rubu karty.</p>
+  </div>
+  <button class="btn primary" id="scanHome" style="flex:none;width:100%">Skenovat kartu</button>
+</main>
+
+<main id="game" hidden>
+  <div class="record" id="record">
+    <div class="disc"></div>
+    <svg viewBox="0 0 100 100" aria-hidden="true">
+      <circle class="ring-bg" cx="50" cy="50" r="48" fill="none" stroke-width="2"/>
+      <circle class="ring" id="ring" cx="50" cy="50" r="48" fill="none" stroke-width="2.6" stroke-linecap="round"
+        transform="rotate(-90 50 50)" stroke-dasharray="301.6" stroke-dashoffset="301.6"/>
+    </svg>
+    <button class="playbtn" id="play" aria-label="Přehrát">
+      <svg viewBox="0 0 24 24" id="icon"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+    </button>
+  </div>
+  <div class="time" id="time"></div>
+  <div class="status" id="status">Načítám…</div>
+  <div class="row">
+    <button class="btn" id="restart">⟲ Od začátku</button>
+    <button class="btn" id="revealBtn">Odkrýt</button>
+  </div>
+  <div class="reveal" id="reveal" hidden>
+    <div class="artist" id="rArtist"></div>
+    <div class="year" id="rYear"></div>
+    <div class="title" id="rTitle"></div>
+  </div>
+  <button class="btn primary" id="scanNext" style="flex:none;width:100%">Další karta</button>
+</main>
+
+<div class="scanner" id="scanner" hidden>
+  <video id="cam" playsinline muted></video>
+  <div class="frame"></div>
+  <div class="bar">
+    <div class="hint" id="scanHint">Namiř na QR kód karty</div>
+    <button class="btn" id="scanCancel">Zavřít</button>
+  </div>
+</div>
+
+<div id="yt"><div id="ytplayer"></div></div>
+<canvas id="cv" hidden></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script>
+const CARDS = [{"a": "Tři sestry", "t": "Modlitba pro partu", "y": 2003, "c": "t", "v": "7xf-t_oCjMM"}, {"a": "Tři sestry", "t": "Venda", "y": 1999, "c": "t", "v": "_FvXz2xAkdI"}, {"a": "Helena Vondráčková", "t": "Dlouhá noc", "y": 2001, "c": "s", "v": "Y2aPbfS_q_E"}, {"a": "Alkehol", "t": "S úsměvem se pije líp", "y": 1993, "c": "a", "v": "mg8UIse5veo"}, {"a": "Morčata na útěku", "t": "Šalina", "y": 2022, "c": "m", "v": "GWPe8TQ0SgE"}, {"a": "Morčata na útěku", "t": "Hnisař", "y": 2004, "c": "m", "v": "5FbfjPVBC1s"}, {"a": "Alkehol", "t": "Travičko zelená", "y": 1992, "c": "a", "v": "O-0usCZx634"}, {"a": "Karel Gott", "t": "Lady Carneval", "y": 1969, "c": "s", "v": "TRL2TWO2_ng"}, {"a": "Alkehol", "t": "Je to prima", "y": 1999, "c": "a", "v": "UPOq7_rTjSk"}, {"a": "Petra Janů", "t": "Motorest", "y": 1978, "c": "s", "v": "BqdkyuBviGs"}, {"a": "Petra Černocká", "t": "Saxana", "y": 1972, "c": "s", "v": "ZNeSt8Hmp1c"}, {"a": "Alkehol", "t": "Na zdraví", "y": 1995, "c": "a", "v": "9sNb8t7faFI"}, {"a": "Morčata na útěku", "t": "Planeta prasat", "y": 2006, "c": "m", "v": "tP3jKS3-xFc"}, {"a": "Morčata na útěku", "t": "Lída", "y": 2010, "c": "m", "v": "n9m2zKYlq2A"}, {"a": "Jiří Korn", "t": "Yvetta", "y": 1971, "c": "s", "v": "NC4pzsUK390"}, {"a": "Tři sestry", "t": "Alkohol je", "y": 2005, "c": "t", "v": "uFQbSLxxlxs"}, {"a": "Tři sestry", "t": "Kalhotky ze Lhotky", "y": 2013, "c": "t", "v": "tvnZYz1ETlI"}, {"a": "Petr Kotvald", "t": "Mumuland", "y": 2002, "c": "s", "v": "MxJgpc1O_dI"}, {"a": "Václav Neckář", "t": "Já ti zabrnkám", "y": 1976, "c": "s", "v": "2z3JCOHM9VE"}, {"a": "Tři sestry", "t": "Kelti", "y": 1996, "c": "t", "v": "YGvDIykIExQ"}, {"a": "Tři sestry", "t": "Léto", "y": 2010, "c": "t", "v": "ocqNHIYHDH0"}, {"a": "Alkehol", "t": "Pan Vodka", "y": 2005, "c": "a", "v": "oVPFsJnTL6c"}, {"a": "Tři sestry", "t": "Lidojedi", "y": 1993, "c": "t", "v": "JpRqXZR5MuU"}, {"a": "Divokej Bill", "t": "Čmelák", "y": 2006, "c": "s", "v": "z-ucyntqXzc"}, {"a": "Olympic", "t": "Osmý den", "y": 1980, "c": "s", "v": "7CGmZJcsG30"}, {"a": "Tři sestry", "t": "Pomeranč", "y": 2018, "c": "t", "v": "aBtk3E_2dIQ"}, {"a": "Karel Zich", "t": "Paráda", "y": 1983, "c": "s", "v": "Q6uJXpBIPiM"}, {"a": "Tři sestry", "t": "Ztráta imunity", "y": 1990, "c": "t", "v": "AoMUxcem3pE"}, {"a": "Dalibor Janda", "t": "Kde jsi", "y": 1987, "c": "s", "v": "p8WkVhRvAqI"}, {"a": "Tři sestry", "t": "Plesový ráno", "y": 1993, "c": "t", "v": "xEYK6-RZFYs"}, {"a": "Alkehol", "t": "Čekám každej den", "y": 1993, "c": "a", "v": "M0H-JSYaNlY"}, {"a": "Tři sestry", "t": "Lázničky", "y": 2010, "c": "t", "v": "UNppDL6wZLY"}, {"a": "Morčata na útěku", "t": "Twajlajt", "y": 2013, "c": "m", "v": "nDjcjR8ijGE"}, {"a": "Morčata na útěku", "t": "Di do prdele!", "y": 2017, "c": "m", "v": "u8XKVIpLvKY"}, {"a": "Jiří Schelinger", "t": "Holubí dům", "y": 1974, "c": "s", "v": "Pgg3OZKSQyI"}, {"a": "Tři sestry", "t": "Aida", "y": 2003, "c": "t", "v": "Sy-WuK78rNw"}, {"a": "Václav Neckář & Umakart", "t": "Půlnoční", "y": 2011, "c": "s", "v": "45mbYID0ec4"}, {"a": "Morčata na útěku", "t": "Nalitej jak pohrabáč", "y": 2005, "c": "m", "v": "2o-DYlGV0ls"}, {"a": "Karel Gott & Darinka Rolincová", "t": "Zvonky štěstí", "y": 1985, "c": "s", "v": "IOA8JvHU7BU"}, {"a": "Alkehol", "t": "Odpočívej v pokoji", "y": 1996, "c": "a", "v": "p4WNRQDjvBc"}, {"a": "Tři sestry", "t": "Lepší časy", "y": 1996, "c": "t", "v": "VEo2WZqrVmY"}, {"a": "Alkehol", "t": "Připíjim", "y": 2025, "c": "a", "v": "cDojn4e9JIk"}, {"a": "Tři sestry", "t": "Básník", "y": 1998, "c": "t", "v": "2hRa7ySH4BI"}, {"a": "Tři sestry", "t": "Mexiko", "y": 1999, "c": "t", "v": "PzDqDD2PNkc"}, {"a": "Alkehol", "t": "Anděl strážnej", "y": 2002, "c": "a", "v": "Ju1a6fulES0"}, {"a": "Morčata na útěku", "t": "Zootarián", "y": 2022, "c": "m", "v": "cUrgIi20Cms"}, {"a": "Morčata na útěku", "t": "Hledá se děda", "y": 2017, "c": "m", "v": "zd_oQ-jyiJI"}, {"a": "Morčata na útěku", "t": "Lída The Svatba", "y": 2013, "c": "m", "v": "GYxZtytlxnU"}, {"a": "Alkehol", "t": "Pivo dělá hezká těla", "y": 1993, "c": "a", "v": "PLjvZY0JSXQ"}, {"a": "Tři sestry", "t": "O strašlivé vojně s Turkem", "y": 1995, "c": "t", "v": "DmKJTbmUYmw"}, {"a": "Tomáš Klus", "t": "Pánu Bohu do oken", "y": 2012, "c": "s", "v": "eDFjf67r3So"}, {"a": "Tři sestry", "t": "Adamiti v Londýně", "y": 2007, "c": "t", "v": "tFdjUJb7exQ"}, {"a": "Alkehol", "t": "O chlastu", "y": 1992, "c": "a", "v": "5XiMOHwvfHM"}, {"a": "Morčata na útěku", "t": "Swingers party", "y": 2006, "c": "m", "v": "7yGCjr3QLng"}, {"a": "Alkehol", "t": "Vesnická", "y": 1996, "c": "a", "v": "9u31HXOYrxU"}, {"a": "Tři sestry", "t": "Ave Braník", "y": 1998, "c": "t", "v": "VLS3iOWrWg8"}, {"a": "Morčata na útěku", "t": "Divokej Jaryn", "y": 2010, "c": "m", "v": "5cYqUTH7PGQ"}, {"a": "Petr Spálený", "t": "Plakalo bejby", "y": 1967, "c": "s", "v": "g5fmtYuE1Ic"}, {"a": "Alkehol", "t": "Máme spoustu chlastu", "y": 2018, "c": "a", "v": "zJFTCiWmC7Y"}, {"a": "Morčata na útěku", "t": "Hraju na triangl", "y": 2017, "c": "m", "v": "e7HqA3kyRPc"}, {"a": "Tři sestry", "t": "Život je takovej", "y": 1990, "c": "t", "v": "hrhDs8hVPxo"}, {"a": "Alkehol", "t": "Vypít se", "y": 1992, "c": "a", "v": "v1FTT2ZVAl8"}, {"a": "Alkehol", "t": "Buráky", "y": 1993, "c": "a", "v": "uL5NSyPHPUM"}, {"a": "Morčata na útěku", "t": "Chlapi jsou prý na hovno", "y": 2024, "c": "m", "v": "pgKncg-srqc"}, {"a": "Petr Kotvald & Stanislav Hložek", "t": "Holky z naší školky", "y": 1982, "c": "s", "v": "KFxlL6cltBg"}, {"a": "Alkehol", "t": "Už se to smaží a peče", "y": 2003, "c": "a", "v": "OEtyE2IQmhg"}, {"a": "Ivan Mládek", "t": "Jožin z bažin", "y": 1978, "c": "s", "v": "VjpoDmAamZw"}, {"a": "Tři sestry", "t": "Válka s loky", "y": 2003, "c": "t", "v": "Baf3ylm7EVg"}, {"a": "Pavel Dydovič", "t": "Bláznova ukolébavka", "y": 1970, "c": "s", "v": "0_f-cQ7ehjw"}, {"a": "Alkehol", "t": "Život je krátkej", "y": 2003, "c": "a", "v": "KpNfNG4Aud8"}, {"a": "Alkehol", "t": "Hospodo nalejvej", "y": 1992, "c": "a", "v": "VWWVec1eM8w"}, {"a": "Aneta Langerová", "t": "Hříšná těla, křídla motýlí", "y": 2005, "c": "s", "v": "Ra6xkNT4eCQ"}, {"a": "Morčata na útěku", "t": "Prcáš prcám", "y": 2010, "c": "m", "v": "Uz6bFRiRT00"}, {"a": "Lucie", "t": "Chci zas v tobě spát", "y": 2003, "c": "s", "v": "WOM3Iab5T2s"}, {"a": "Morčata na útěku", "t": "Ožralej Yetty", "y": 2005, "c": "m", "v": "XoYgGGT5wtc"}, {"a": "Lucie", "t": "Medvídek", "y": 1998, "c": "s", "v": "J9q_oq6f19E"}, {"a": "Tři sestry", "t": "Sovy v mazutu", "y": 1990, "c": "t", "v": "eEx2JeDEU38"}, {"a": "Olympic", "t": "Dynamit", "y": 1970, "c": "s", "v": "xf0OcIf-5PY"}, {"a": "Iveta Bartošová & Petr Sepéši", "t": "Knoflíky lásky", "y": 1984, "c": "s", "v": "RnUkP-YRNsw"}, {"a": "Hana Zagorová & Petr Rezek", "t": "Duhová víla", "y": 1977, "c": "s", "v": "pTQNKyFzd60"}, {"a": "Morčata na útěku", "t": "Vladislav", "y": 2018, "c": "m", "v": "fG5or0QvdDI"}, {"a": "Tři sestry", "t": "Zelená", "y": 1991, "c": "t", "v": "hV4mJC4yEpU"}, {"a": "Tři sestry", "t": "Kovárna", "y": 1990, "c": "t", "v": "5dbahfm53qM"}, {"a": "Jiří Korn", "t": "Miss Moskva", "y": 1989, "c": "s", "v": "RYhkzJ0BVX8"}, {"a": "Mandrage", "t": "Hledá se žena", "y": 2009, "c": "s", "v": "ogGMDUvQOUk"}, {"a": "Alkehol", "t": "Železná Sparta", "y": 1992, "c": "a", "v": "duBOmiQj3Ak"}, {"a": "Morčata na útěku", "t": "Máme je krátký", "y": 2006, "c": "m", "v": "zRifScA_EOA"}, {"a": "Marie Rottrová", "t": "Řeka lásky", "y": 1974, "c": "s", "v": "s8_k2da1MTA"}, {"a": "Alkehol", "t": "V pátek k večeru", "y": 1995, "c": "a", "v": "v8tSQKSeNVw"}, {"a": "Marta Kubišová", "t": "Modlitba pro Martu", "y": 1968, "c": "s", "v": "Xn4Qjw4KebM"}, {"a": "Jiří Korn & Vilém Čok", "t": "Karel nese asi čaj", "y": 1986, "c": "s", "v": "PuC3rdew-IE"}, {"a": "Alkehol", "t": "Hospodská", "y": 1996, "c": "a", "v": "04WNYTXSMLg"}, {"a": "Alkehol", "t": "Piju jako duha", "y": 2002, "c": "a", "v": "m1EuaIMV9l8"}, {"a": "Tři sestry", "t": "Budapešť", "y": 1990, "c": "t", "v": "8_jJ6EkKZ38"}, {"a": "Tři sestry", "t": "Pijánovka", "y": 1993, "c": "t", "v": "_Kzvt6gXmgg"}, {"a": "Tři sestry", "t": "Toy Dollz", "y": 1995, "c": "t", "v": "wsEQSfS76E8"}, {"a": "Aneta Langerová", "t": "Voda živá", "y": 2004, "c": "s", "v": "x7hagwmHA40"}, {"a": "Alkehol", "t": "Na Slamníku", "y": 1992, "c": "a", "v": "zzooVP5HvfM"}, {"a": "Alkehol", "t": "Zase sám", "y": 1997, "c": "a", "v": "Xm7Armt6x_A"}, {"a": "Jana Kratochvílová", "t": "V stínu kapradiny", "y": 1981, "c": "s", "v": "uhM8EXAuK1U"}];
+const CAT = {a:"--cat-a", t:"--cat-t", m:"--cat-m", s:"--cat-s"};
+const $ = id => document.getElementById(id);
+let player = null, ready = false, current = null, tick = null, pendingPlay = false;
+
+function cardFromText(t){
+  const m = String(t||"").match(/#?(\d{1,3})\s*$/);
+  if(!m) return null;
+  const n = parseInt(m[1],10);
+  return (n>=1 && n<=CARDS.length) ? n : null;
+}
+function fmt(s){ s=Math.max(0,Math.floor(s||0)); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); }
+function setIcon(playing){
+  $("icon").innerHTML = playing ? '<path fill="currentColor" d="M7 5h4v14H7zM13 5h4v14h-4z"/>' : '<path fill="currentColor" d="M8 5v14l11-7z"/>';
+  $("play").setAttribute("aria-label", playing ? "Pozastavit" : "Přehrát");
+  $("record").classList.toggle("playing", playing);
+}
+function status(t, isErr){ $("status").innerHTML = t; $("status").classList.toggle("err", !!isErr); }
+
+function loadCard(n){
+  current = n;
+  const c = CARDS[n-1];
+  $("home").hidden = true; $("game").hidden = false;
+  $("cardno").textContent = "KARTA #" + String(n).padStart(3,"0");
+  $("reveal").hidden = true; $("revealBtn").textContent = "Odkrýt";
+  $("rArtist").textContent = c.a; $("rYear").textContent = c.y; $("rTitle").textContent = c.t;
+  $("reveal").style.setProperty("--cat", `var(${CAT[c.c]})`);
+  $("ring").style.strokeDashoffset = 301.6; $("time").textContent = "";
+  setIcon(false);
+  if(history.replaceState) history.replaceState(null,"","#"+String(n).padStart(3,"0"));
+  if(ready){ player.cueVideoById(c.v); status("Ťukni na desku a hádej"); }
+  else status("Načítám přehrávač…");
+}
+
+function onYouTubeIframeAPIReady(){
+  player = new YT.Player("ytplayer",{
+    width:200,height:200,
+    playerVars:{playsinline:1,controls:0,disablekb:1,rel:0,fs:0,iv_load_policy:3},
+    events:{
+      onReady:()=>{ ready = true; if(current){ player.cueVideoById(CARDS[current-1].v); status("Ťukni na desku a hádej"); if(pendingPlay){pendingPlay=false; player.playVideo();} } },
+      onStateChange:e=>{
+        const playing = e.data === YT.PlayerState.PLAYING;
+        setIcon(playing);
+        if(playing){ status("Hraje… Kdy to vyšlo?"); startTick(); }
+        else if(e.data === YT.PlayerState.PAUSED) status("Pozastaveno");
+        else if(e.data === YT.PlayerState.ENDED){ status("Konec písničky"); }
+      },
+      onError:e=>{
+        setIcon(false);
+        const c = CARDS[current-1];
+        status(`Tohle video nejde přehrát naslepo. <a class="ext" href="https://www.youtube.com/watch?v=${c.v}" target="_blank" rel="noopener">Otevřít na YouTube</a> (ukáže název).`, true);
+      }
+    }
+  });
+}
+function startTick(){
+  clearInterval(tick);
+  tick = setInterval(()=>{
+    if(!player || !player.getDuration) return;
+    const d = player.getDuration()||0, t = player.getCurrentTime()||0;
+    $("time").textContent = d ? fmt(t)+" / "+fmt(d) : fmt(t);
+    $("ring").style.strokeDashoffset = d ? 301.6*(1-t/d) : 301.6;
+  }, 400);
+}
+
+$("play").onclick = ()=>{
+  if(!ready){ pendingPlay = true; status("Načítám přehrávač…"); return; }
+  const s = player.getPlayerState();
+  if(s === YT.PlayerState.PLAYING) player.pauseVideo(); else player.playVideo();
+};
+$("restart").onclick = ()=>{ if(ready){ player.seekTo(0,true); player.playVideo(); } };
+$("revealBtn").onclick = ()=>{
+  const r = $("reveal"); r.hidden = !r.hidden;
+  $("revealBtn").textContent = r.hidden ? "Odkrýt" : "Skrýt";
+};
+
+/* ---- scanner ---- */
+let stream = null, scanning = false;
+const cv = $("cv"), ctx = cv.getContext("2d", {willReadFrequently:true});
+async function openScanner(){
+  if(ready && player.getPlayerState && player.getPlayerState()===YT.PlayerState.PLAYING) player.pauseVideo();
+  $("scanner").hidden = false; $("scanHint").textContent = "Namiř na QR kód karty";
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false});
+    const v = $("cam"); v.srcObject = stream; await v.play();
+    scanning = true; requestAnimationFrame(scanLoop);
+  }catch(e){
+    $("scanHint").textContent = "Kamera není povolená. Naskenuj kartu běžným foťákem v mobilu, otevře se rovnou tady.";
+  }
+}
+function closeScanner(){
+  scanning = false; $("scanner").hidden = true;
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream = null; }
+}
+function scanLoop(){
+  if(!scanning) return;
+  const v = $("cam");
+  if(v.readyState >= 2 && v.videoWidth){
+    const w = 480, h = Math.round(v.videoHeight * w / v.videoWidth);
+    cv.width = w; cv.height = h; ctx.drawImage(v,0,0,w,h);
+    const code = window.jsQR ? jsQR(ctx.getImageData(0,0,w,h).data, w, h, {inversionAttempts:"dontInvert"}) : null;
+    if(code){
+      const n = cardFromText(code.data);
+      if(n){ closeScanner(); if(navigator.vibrate) navigator.vibrate(60); loadCard(n); return; }
+      $("scanHint").textContent = "Tohle není karta Hitster CZ";
+    }
+  }
+  requestAnimationFrame(scanLoop);
+}
+$("scanHome").onclick = openScanner;
+$("scanNext").onclick = openScanner;
+$("scanCancel").onclick = closeScanner;
+
+window.addEventListener("hashchange", ()=>{ const n = cardFromText(location.hash); if(n && n!==current) loadCard(n); });
+const start = cardFromText(location.hash);
+if(start) loadCard(start);
+
+const tag = document.createElement("script"); tag.src = "https://www.youtube.com/iframe_api"; document.head.appendChild(tag);
+</script>
+</body>
+</html>
