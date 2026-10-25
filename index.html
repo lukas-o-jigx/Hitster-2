@@ -327,7 +327,7 @@ async function spHandleRedirect(){
   const ret = ls.get("spReturn") || "";
   history.replaceState(null, "", REDIR + ret);
   if(q.has("code")){
-    try{ await tokenReq({grant_type:"authorization_code", code:q.get("code"), redirect_uri:REDIR, code_verifier:ls.get("spVerifier")||""}); setSrc("sp"); }
+    try{ await tokenReq({grant_type:"authorization_code", code:q.get("code"), redirect_uri:REDIR, code_verifier:ls.get("spVerifier")||""}); setSrc("sp"); setTimeout(()=>{ if(!ls.get("spChecked")){ ls.set("spChecked","1"); openSheet(); checkAll(); } }, 600); }
     catch(e){ alert("Přihlášení do Spotify selhalo: " + e.message); }
   }
   return true;
