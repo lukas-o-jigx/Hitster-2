@@ -376,9 +376,18 @@ function pick(items, c){
   }
   return best;
 }
-async function spSearch(q, limit){
+let spBlockedUntil = 0;
+class RateErr extends Error{}
+async function spSearch(q, limit, tries){
+  tries = tries||0;
+  if(Date.now() < spBlockedUntil) throw new RateErr("rate");
   const r = await api("GET", "/search?type=track&limit="+(limit||10)+"&market=from_token&q="+encodeURIComponent(q));
-  if(r.status===429){ const w = (+r.headers.get("Retry-After")||2)*1000; await new Promise(z=>setTimeout(z,w)); return spSearch(q,limit); }
+  if(r.status===429){
+    const ra = +r.headers.get("Retry-After");
+    if(ra && ra <= 30 && tries < 2){ await new Promise(z=>setTimeout(z, ra*1000)); return spSearch(q, limit, tries+1); }
+    spBlockedUntil = Date.now() + (ra ? ra*1000 : 10*60*1000);
+    throw new RateErr("rate");
+  }
   if(!r.ok) return [];
   return ((await r.json()).tracks||{}).items || [];
 }
@@ -390,9 +399,10 @@ async function spFind(n, force){
   const c = CARDS[n-1];
   const artist = cleanArtist(c.a), title = cleanTitle(c.t);
   const strip = x => x.normalize("NFD").replace(/[̀-ͯ]/g,"");
-  const tries = [`track:"${title}" artist:"${artist}"`, `${title} ${artist}`, `track:"${strip(title)}" artist:"${strip(artist)}"`, `${strip(title)} ${strip(artist)}`, `${c.t} ${c.a}`, `artist:"${artist}"`];
+  const tries = [`${title} ${artist}`, `${strip(title)} ${strip(artist)}`];
   for(const q of tries){
     const items = await spSearch(q, 10);
+    await new Promise(z=>setTimeout(z, 350));
     const best = pick(items, c);
     if(best){
       spUris[n] = {u:best.uri, d:best.duration_ms, nm:best.artists.map(a=>a.name).join(", ")+" – "+best.name};
@@ -407,7 +417,7 @@ async function spPlayCurrent(fromStart){
   const n = current;
   status("Hledám na Spotify…");
   let hit;
-  try{ hit = await spFind(n); }catch(e){ if(e.message==="login"){ status("Přihlas se ke Spotify (⚙)", true); openSheet(); return; } throw e; }
+  try{ hit = await spFind(n); }catch(e){ if(e instanceof RateErr){ hit = null; } else { if(e.message==="login"){ status("Přihlas se ke Spotify (⚙)", true); openSheet(); return; } throw e; } }
   if(!hit){ cardMode = "yt"; status("Na Spotify není – hraju z YouTube"); if(ready){ player.loadVideoById(CARDS[n-1].v); } else pendingPlay = true; return; }
   let r;
   if(spCur === hit.u && !fromStart) r = await api("PUT", "/me/player/play"+devParam());
@@ -490,7 +500,9 @@ async function checkAll(){
   const miss = [];
   for(let n=1;n<=CARDS.length;n++){
     $("chkP").textContent = `Kontroluju ${n}/${CARDS.length}…`;
-    let h = null; try{ h = await spFind(n); }catch(e){}
+    let h = null;
+    try{ h = await spFind(n); }
+    catch(e){ if(e instanceof RateErr){ checking = false; $("chkP").innerHTML = `<b>Spotify teď omezil počet dotazů.</b> Zkontrolováno ${n-1}/${CARDS.length}, zkus to znovu později – pokračuje se tam, kde to skončilo.`; return; } }
     if(!h) miss.push(n);
   }
   checking = false;
