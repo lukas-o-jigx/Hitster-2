@@ -128,6 +128,7 @@ a.ext{color:var(--accent)}
   <div class="frame"></div>
   <div class="bar">
     <div class="hint" id="scanHint">Namiř na QR kód karty</div>
+    <div class="row"><input id="manualNo" type="number" inputmode="numeric" min="1" max="220" placeholder="nebo číslo karty (1–220)" style="flex:1;padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--panel);color:var(--fg);font:16px var(--body)"><button class="btn primary" id="manualGo" style="flex:none">Hrát</button></div>
     <button class="btn" id="scanCancel">Zavřít</button>
   </div>
 </div>
@@ -256,37 +257,70 @@ $("revealBtn").onclick = ()=>{
 /* ---- scanner ---- */
 let stream = null, scanning = false;
 const cv = $("cv"), ctx = cv.getContext("2d", {willReadFrequently:true});
+let detector = null;
+try{ if("BarcodeDetector" in window) detector = new BarcodeDetector({formats:["qr_code"]}); }catch(e){ detector = null; }
 async function openScanner(){
   if(src==="sp") spStop();
   if(ready && player.getPlayerState && player.getPlayerState()===YT.PlayerState.PLAYING) player.pauseVideo();
-  $("scanner").hidden = false; $("scanHint").textContent = "Namiř na QR kód karty";
+  $("sheet").hidden = true;
+  $("scanner").hidden = false; $("scanHint").textContent = "Namiř na QR kód karty"; $("manualNo").value = "";
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    $("scanHint").textContent = "Tenhle prohlížeč kameru nepustí. Otevři stránku v Safari/Chrome, nebo naskenuj kartu foťákem, případně zadej číslo karty."; return;
+  }
   try{
-    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false});
-    const v = $("cam"); v.srcObject = stream; await v.play();
-    scanning = true; requestAnimationFrame(scanLoop);
+    try{ stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}, width:{ideal:1280}, height:{ideal:720}}, audio:false}); }
+    catch(e1){ if(e1 && e1.name==="NotAllowedError") throw e1; stream = await navigator.mediaDevices.getUserMedia({video:true, audio:false}); }
+    const v = $("cam"); v.setAttribute("playsinline",""); v.muted = true; v.srcObject = stream;
+    try{ await v.play(); }catch(e){}
+    scanning = true; lastScan = 0; requestAnimationFrame(scanLoop);
   }catch(e){
-    $("scanHint").textContent = "Kamera není povolená. Naskenuj kartu běžným foťákem v mobilu, otevře se rovnou tady.";
+    $("scanHint").textContent = (e && e.name==="NotAllowedError")
+      ? "Kamera je zakázaná. Povol ji v nastavení prohlížeče pro tuhle stránku, nebo naskenuj kartu foťákem / zadej číslo karty."
+      : "Kameru se nepodařilo spustit. Naskenuj kartu foťákem v mobilu, nebo zadej číslo karty.";
   }
 }
 function closeScanner(){
   scanning = false; $("scanner").hidden = true;
   if(stream){ stream.getTracks().forEach(t=>t.stop()); stream = null; }
+  const v = $("cam"); v.srcObject = null;
 }
-function scanLoop(){
+function gotCode(text){
+  const n = cardFromText(text);
+  if(n){ closeScanner(); if(navigator.vibrate) navigator.vibrate(60); loadCard(n); return true; }
+  $("scanHint").textContent = "Tohle není karta Hitster CZ";
+  return false;
+}
+let lastScan = 0, busy = false;
+async function scanLoop(ts){
   if(!scanning) return;
   const v = $("cam");
-  if(v.readyState >= 2 && v.videoWidth){
-    const w = 480, h = Math.round(v.videoHeight * w / v.videoWidth);
-    cv.width = w; cv.height = h; ctx.drawImage(v,0,0,w,h);
-    const code = window.jsQR ? jsQR(ctx.getImageData(0,0,w,h).data, w, h, {inversionAttempts:"dontInvert"}) : null;
-    if(code){
-      const n = cardFromText(code.data);
-      if(n){ closeScanner(); if(navigator.vibrate) navigator.vibrate(60); loadCard(n); return; }
-      $("scanHint").textContent = "Tohle není karta Hitster CZ";
-    }
+  if(!busy && v.readyState >= 2 && v.videoWidth && (ts||0) - lastScan > 120){
+    lastScan = ts||0; busy = true;
+    try{
+      if(detector){
+        const codes = await detector.detect(v);
+        if(codes && codes.length && gotCode(codes[0].rawValue)){ busy = false; return; }
+      } else if(window.jsQR){
+        // centre square crop, scaled to 640px, both polarities
+        const side = Math.min(v.videoWidth, v.videoHeight), sx = (v.videoWidth-side)/2, sy = (v.videoHeight-side)/2;
+        const w = 640; cv.width = w; cv.height = w;
+        ctx.drawImage(v, sx, sy, side, side, 0, 0, w, w);
+        let code = jsQR(ctx.getImageData(0,0,w,w).data, w, w, {inversionAttempts:"attemptBoth"});
+        if(!code){ const W = 800, H = Math.round(v.videoHeight*W/v.videoWidth); cv.width = W; cv.height = H; ctx.drawImage(v,0,0,W,H); code = jsQR(ctx.getImageData(0,0,W,H).data, W, H, {inversionAttempts:"dontInvert"}); }
+        if(code && gotCode(code.data)){ busy = false; return; }
+      }
+    }catch(e){ if(detector && !window.__detFail){ window.__detFail = 1; detector = null; } }
+    busy = false;
   }
   requestAnimationFrame(scanLoop);
 }
+function manualGo(){
+  const n = parseInt($("manualNo").value, 10);
+  if(n>=1 && n<=CARDS.length){ closeScanner(); loadCard(n); }
+  else $("scanHint").textContent = "Zadej číslo 1–" + CARDS.length;
+}
+$("manualGo").onclick = manualGo;
+$("manualNo").onkeydown = e=>{ if(e.key==="Enter") manualGo(); };
 $("scanHome").onclick = openScanner;
 $("scanNext").onclick = openScanner;
 $("scanCancel").onclick = closeScanner;
@@ -419,16 +453,26 @@ async function spPlayCurrent(fromStart){
   let hit;
   try{ hit = await spFind(n); }catch(e){ if(e instanceof RateErr){ hit = null; } else { if(e.message==="login"){ status("Přihlas se ke Spotify (⚙)", true); openSheet(); return; } throw e; } }
   if(!hit){ if(!CARDS[n-1].v){ status("Tuhle písničku se nepodařilo pustit. Zkus to znovu.", true); return; } cardMode = "yt"; status("Na Spotify není – hraju z YouTube"); if(ready){ player.loadVideoById(CARDS[n-1].v); } else pendingPlay = true; return; }
-  let r;
-  if(spCur === hit.u && !fromStart) r = await api("PUT", "/me/player/play"+devParam());
-  else r = await api("PUT", "/me/player/play"+devParam(), {uris:[hit.u], position_ms:0});
-  if(r.status === 404){
-    // no active device -> try first available
-    const dr = await api("GET","/me/player/devices"); const ds = dr.ok ? (await dr.json()).devices : [];
-    if(ds.length){ ls.set("spDev", ds[0].id); r = await api("PUT", "/me/player/play?device_id="+encodeURIComponent(ds[0].id), {uris:[hit.u], position_ms:0}); }
-    else { status('Spotify spí. <a class="ext" href="spotify:">Otevři Spotify</a>, vrať se sem a ťukni znovu.', true); return; }
+  const resume = spCur === hit.u && !fromStart;
+  const body = resume ? undefined : {uris:[hit.u], position_ms:0};
+  const playOn = id => api("PUT", "/me/player/play"+(id ? "?device_id="+encodeURIComponent(id) : ""), body);
+  let r = await playOn(ls.get("spDev"));
+  if(!r.ok && r.status !== 202){
+    // stale/missing device (404), Spotify hiccup (502/503) or restricted -> pick a device, wake it, retry
+    const dr = await api("GET","/me/player/devices"); const ds = dr.ok ? ((await dr.json()).devices||[]).filter(d=>!d.is_restricted) : [];
+    if(!ds.length){ ls.set("spDev", null); status('Spotify spí. <a class="ext" href="spotify:">Otevři aplikaci Spotify</a>, vrať se sem a ťukni na desku znovu.', true); return; }
+    const pref = ls.get("spDev");
+    ds.sort((a,b)=> (b.id===pref)-(a.id===pref) || (b.is_active-a.is_active) || ((b.type==="Smartphone")-(a.type==="Smartphone")));
+    for(const d of ds.slice(0,3)){
+      await api("PUT","/me/player",{device_ids:[d.id], play:false});
+      await new Promise(z=>setTimeout(z,700));
+      r = await api("PUT", "/me/player/play?device_id="+encodeURIComponent(d.id), {uris:[hit.u], position_ms:0});
+      if(r.ok || r.status===202){ if(!pref) ls.set("spDev", null); break; }
+      if(r.status>=500){ await new Promise(z=>setTimeout(z,1200)); r = await api("PUT", "/me/player/play?device_id="+encodeURIComponent(d.id), {uris:[hit.u], position_ms:0}); if(r.ok || r.status===202) break; }
+    }
+    if(!r.ok && r.status !== 202 && !resume){ spCur = null; }
   }
-  if(!r.ok && r.status !== 202){ let m=""; try{ m=(await r.json()).error.message; }catch(e){} status("Spotify: " + (m||r.status), true); return; }
+  if(!r.ok && r.status !== 202){ let m=""; try{ m=(await r.json()).error.message; }catch(e){} status(r.status>=500 ? 'Spotify neodpovídá. <a class="ext" href="spotify:">Otevři aplikaci Spotify</a>, pusť v ní cokoli, vrať se a ťukni znovu.' : "Spotify: " + (m||r.status), true); return; }
   if(spCur !== hit.u || fromStart){ spPos = 0; }
   spCur = hit.u; spDur = hit.d; spT0 = Date.now(); spPlaying = true;
   setIcon(true); status("Hraje… Kdy to vyšlo?"); keepAwake(); startSpTick();
