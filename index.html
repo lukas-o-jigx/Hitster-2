@@ -447,13 +447,13 @@ function startSpTick(){
   }, 400);
   clearInterval(spPoll);
   spPoll = setInterval(async ()=>{
-    if(src!=="sp" || !spCur) return;
+    if(src!=="sp" || !spCur || !spPlaying || document.hidden) return;
     try{ const r = await api("GET","/me/player"); if(r.status!==200) return; const j = await r.json();
       if(!j.item || j.item.uri !== spCur) return;
       spPos = j.progress_ms; spT0 = Date.now(); if(j.item.duration_ms) spDur = j.item.duration_ms;
       if(j.is_playing !== spPlaying){ spPlaying = j.is_playing; setIcon(spPlaying); status(spPlaying?"Hraje… Kdy to vyšlo?":"Pozastaveno"); }
     }catch(e){}
-  }, 4000);
+  }, 20000);
 }
 function spStop(){ if(spPlaying) spPause(); }
 
