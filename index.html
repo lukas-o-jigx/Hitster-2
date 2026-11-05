@@ -30,10 +30,10 @@ body{background:var(--bg);color:var(--fg);font:16px/1.4 var(--body);
   padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
   display:flex;flex-direction:column;align-items:center;-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
-header{width:100%;max-width:440px;display:flex;justify-content:space-between;align-items:baseline}
-.brand{font:800 20px/1 var(--display);letter-spacing:.02em}
+header{width:100%;max-width:440px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.brand{font:800 20px/1 var(--display);letter-spacing:.02em;white-space:nowrap}
 .brand span{color:var(--accent)}
-.cardno{font:600 13px var(--body);color:var(--muted);letter-spacing:.12em;font-variant-numeric:tabular-nums}
+.cardno{white-space:nowrap;font:600 13px var(--body);color:var(--muted);letter-spacing:.12em;font-variant-numeric:tabular-nums}
 main{flex:1;width:100%;max-width:440px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px}
 .record{position:relative;width:min(78vw,320px);aspect-ratio:1;max-width:100%}
 .record svg{position:absolute;inset:0;width:100%;height:100%}
@@ -120,7 +120,8 @@ a.ext{color:var(--accent)}
   <div class="time" id="time"></div>
   <div class="status" id="status">Načítám…</div>
   <div class="row">
-    <button class="btn" id="restart">⟲ Od začátku</button>
+    <button class="btn" id="restart">⟲ Znovu</button>
+    <button class="btn" id="fwd">+10 s</button>
     <button class="btn" id="revealBtn">Odkrýt</button>
   </div>
   <div class="reveal" id="reveal" hidden>
@@ -200,7 +201,7 @@ function loadCard(n){
   const c = CARDS[n-1];
   cardStart = pickStart();
   $("home").hidden = true; $("game").hidden = false;
-  $("cardno").textContent = "KARTA #" + String(n).padStart(3,"0");
+  $("cardno").textContent = "#" + String(n).padStart(3,"0");
   $("reveal").hidden = true; $("revealBtn").textContent = "Odkrýt";
   $("rArtist").textContent = c.a; $("rYear").textContent = c.y; $("rTitle").textContent = c.t;
   $("reveal").style.setProperty("--cat", `var(${CAT[c.c]})`);
@@ -273,6 +274,18 @@ function autoPlay(){
   setTimeout(()=>{ try{ $("play").onclick(); }catch(e){} }, 150);
 }
 $("restart").onclick = ()=>{ if(src==="sp" && cardMode!=="yt"){ spPlayCurrent(true).catch(e=>status("Spotify chyba: "+e.message,true)); return; } if(ready){ player.seekTo(0,true); player.playVideo(); } };
+$("fwd").onclick = async ()=>{
+  if(!current) return;
+  if(src==="sp" && cardMode!=="yt"){
+    if(!spCur) return;
+    const pos = spPos + (spPlaying ? Date.now()-spT0 : 0) + 10000;
+    spPos = pos; spT0 = Date.now();
+    const d = ls.get("spDev");
+    try{ await api("PUT", "/me/player/seek?position_ms="+Math.round(pos)+(d?"&device_id="+encodeURIComponent(d):"")); }catch(e){}
+    return;
+  }
+  if(ready && player.getCurrentTime){ player.seekTo((player.getCurrentTime()||0)+10, true); }
+};
 $("revealBtn").onclick = ()=>{
   const r = $("reveal"); r.hidden = !r.hidden;
   $("revealBtn").textContent = r.hidden ? "Odkrýt" : "Skrýt";
