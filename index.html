@@ -245,6 +245,11 @@ $("play").onclick = ()=>{
   keepAwake(); maskMedia();
   if(src==="sp" && cardMode!=="yt"){ if(spPlaying) spPause(); else spPlayCurrent(false).catch(e=>status("Spotify chyba: "+e.message,true)); return; }
   if(!ready){ pendingPlay = true; status("Načítám přehrávač…"); return; }
+  if(!current) return;
+  const want = CARDS[current-1].v;
+  if(!want){ status("Tahle karta jde pustit jen přes Spotify (⚙).", true); return; }
+  let vid = ""; try{ vid = (player.getVideoData && player.getVideoData().video_id) || ""; }catch(e){}
+  if(vid !== want){ player.loadVideoById(want); status("Načítám…"); return; }
   const s = player.getPlayerState();
   if(s === YT.PlayerState.PLAYING) player.pauseVideo(); else player.playVideo();
 };
@@ -528,7 +533,8 @@ function renderSettings(){
 function setSrc(v){
   if(v===src) { renderSettings(); return; }
   if(src==="sp") spStop(); else if(ready && player.pauseVideo) player.pauseVideo();
-  src = v; ls.set("src2", v); setIcon(false); renderSettings();
+  src = v; ls.set("src2", v); setIcon(false); cardMode = null; clearInterval(tick); renderSettings();
+  if(current) status(v==="yt" ? "Přepnuto na YouTube – ťukni na desku" : "Přepnuto na Spotify – ťukni na desku");
   if(v==="sp") loadDevices();
 }
 function openSheet(){ renderSettings(); $("sheet").hidden = false; if(src==="sp") loadDevices(); }
