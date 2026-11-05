@@ -459,7 +459,11 @@ async function spPlayCurrent(fromStart){
   let r = await playOn(ls.get("spDev"));
   if(!r.ok && r.status !== 202){
     // stale/missing device (404), Spotify hiccup (502/503) or restricted -> pick a device, wake it, retry
-    const dr = await api("GET","/me/player/devices"); const ds = dr.ok ? ((await dr.json()).devices||[]).filter(d=>!d.is_restricted) : [];
+    let firstErr = ""; try{ const j = await r.clone().json(); firstErr = (j.error && (j.error.reason||j.error.message))||""; }catch(e){}
+    if(r.status===403 && /PREMIUM/i.test(firstErr)){ status("Tenhle Spotify účet nemá Premium – Spotify bez Premium nedovolí přehrávání ovládat. Přepni v ⚙ na YouTube.", true); return; }
+    const dr = await api("GET","/me/player/devices");
+    if(dr.status===403){ status("Tenhle Spotify účet není v aplikaci povolený. Majitel ho musí přidat na developer.spotify.com → Hitster CZ → User Management (jméno + e-mail účtu). Mezitím přepni v ⚙ na YouTube.", true); return; }
+    const ds = dr.ok ? ((await dr.json()).devices||[]).filter(d=>!d.is_restricted) : [];
     if(!ds.length){ ls.set("spDev", null); status('Spotify spí. <a class="ext" href="spotify:">Otevři aplikaci Spotify</a>, vrať se sem a ťukni na desku znovu.', true); return; }
     const pref = ls.get("spDev");
     ds.sort((a,b)=> (b.id===pref)-(a.id===pref) || (b.is_active-a.is_active) || ((b.type==="Smartphone")-(a.type==="Smartphone")));
