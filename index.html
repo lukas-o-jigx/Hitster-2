@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#16110d">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Hitster CZ">
 <title>Hitster CZ</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Figtree:wght@400;600&display=swap">
@@ -95,6 +102,7 @@ a.ext{color:var(--accent)}
     <p>Písnička se pustí naslepo. Název uvidíš až na rubu karty.</p>
   </div>
   <button class="btn primary" id="scanHome" style="flex:none;width:100%">Skenovat kartu</button>
+  <p class="note" id="installHint" hidden style="text-align:center">Tip: přidej si Hitster na plochu (menu prohlížeče → <b>Přidat na plochu</b>), spustí se přes celou obrazovku.</p>
 </main>
 
 <main id="game" hidden>
@@ -260,6 +268,10 @@ $("play").onclick = ()=>{
   const s = player.getPlayerState();
   if(s === YT.PlayerState.PLAYING) player.pauseVideo(); else player.playVideo();
 };
+function autoPlay(){
+  if(src==="sp" && !spAuth) return;
+  setTimeout(()=>{ try{ $("play").onclick(); }catch(e){} }, 150);
+}
 $("restart").onclick = ()=>{ if(src==="sp" && cardMode!=="yt"){ spPlayCurrent(true).catch(e=>status("Spotify chyba: "+e.message,true)); return; } if(ready){ player.seekTo(0,true); player.playVideo(); } };
 $("revealBtn").onclick = ()=>{
   const r = $("reveal"); r.hidden = !r.hidden;
@@ -298,7 +310,7 @@ function closeScanner(){
 }
 function gotCode(text){
   const n = cardFromText(text);
-  if(n){ closeScanner(); if(navigator.vibrate) navigator.vibrate(60); loadCard(n); return true; }
+  if(n){ closeScanner(); if(navigator.vibrate) navigator.vibrate(60); loadCard(n); autoPlay(); return true; }
   $("scanHint").textContent = "Tohle není karta Hitster CZ";
   return false;
 }
@@ -328,7 +340,7 @@ async function scanLoop(ts){
 }
 function manualGo(){
   const n = parseInt($("manualNo").value, 10);
-  if(n>=1 && n<=CARDS.length){ closeScanner(); loadCard(n); }
+  if(n>=1 && n<=CARDS.length){ closeScanner(); loadCard(n); autoPlay(); }
   else $("scanHint").textContent = "Zadej číslo 1–" + CARDS.length;
 }
 $("manualGo").onclick = manualGo;
@@ -608,7 +620,13 @@ spHandleRedirect().then(redirected=>{
     let tried = false; try{ tried = sessionStorage.getItem("spTried")==="1"; sessionStorage.setItem("spTried","1"); }catch(e){}
     if(!tried && cid()){ const n = cardFromText(location.hash); if(n) current = n; spLogin(); return; }
   }
-}).finally(()=>{ const start = cardFromText(location.hash); if(start) loadCard(start); renderSettings(); });
+}).finally(()=>{
+  const start = cardFromText(location.hash); if(start) loadCard(start); renderSettings();
+  const standalone = (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+  if(standalone && !start && (src!=="sp" || spAuth)) setTimeout(openScanner, 300);
+});
+try{ const sa = (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true; $("installHint").hidden = sa; }catch(e){}
+if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
 
 const tag = document.createElement("script"); tag.src = "https://www.youtube.com/iframe_api"; document.head.appendChild(tag);
 </script>
