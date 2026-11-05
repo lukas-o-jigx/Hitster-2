@@ -219,6 +219,7 @@ function loadCard(n){
 /* keep screen on + mask lock-screen media info */
 let wakeLock=null;
 async function keepAwake(){ try{ if('wakeLock' in navigator && !wakeLock){ wakeLock=await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release',()=>{wakeLock=null;}); } }catch(e){} }
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && window.__retrySp && src==="sp" && current){ window.__retrySp = false; setTimeout(()=>{ try{ if(ready && player.pauseVideo) player.pauseVideo(); }catch(e){} cardMode = null; spPlayCurrent(false).catch(()=>{}); }, 1500); } });
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && $("record").classList.contains('playing')) keepAwake(); });
 function maskMedia(){
   try{ if('mediaSession' in navigator){
@@ -504,6 +505,7 @@ async function spPlayCurrent(fromStart){
     const ds = dr.ok ? ((await dr.json()).devices||[]).filter(d=>!d.is_restricted) : [];
     if(!ds.length){ ls.set("spDev", null); let who=""; try{ const me = await api("GET","/me"); if(me.ok){ const j = await me.json(); who = j.display_name || j.id; } }catch(e){}
       const msg = 'Spotify nevidí žádné zařízení' + (who ? ' u účtu <b>'+who+'</b>' : '') + '. <a class="ext" href="spotify:">Otevři aplikaci Spotify</a> (stejný účet!), pusť v ní cokoli a ťukni na desku znovu.';
+      window.__retrySp = true;
       if(CARDS[n-1].v && ready){ cardMode = "yt"; player.loadVideoById(ytVid(CARDS[n-1].v, cardStart)); setTimeout(()=>status("Hraju zatím z YouTube. " + msg), 50); return; }
       status(msg, true); return; }
     const pref = ls.get("spDev");
