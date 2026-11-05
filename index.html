@@ -136,6 +136,8 @@ a.ext{color:var(--accent)}
 <div class="sheet" id="sheet" hidden>
   <div class="box">
     <h2>Nastavení</h2>
+    <label>Pustit od</label>
+    <div class="seg" id="startSeg"><button data-s="0">Začátek</button><button data-s="30">0:30</button><button data-s="45">0:45</button><button data-s="rnd">Náhodně</button></div>
     <label>Přehrávat přes</label>
     <div class="seg"><button id="srcSp">Spotify</button><button id="srcYt">YouTube</button></div>
     <div id="spBox">
@@ -181,9 +183,14 @@ function setIcon(playing){
 }
 function status(t, isErr){ $("status").innerHTML = t; $("status").classList.toggle("err", !!isErr); }
 
+let cardStart = 0;
+function startPref(){ try{ return localStorage.getItem("startAt") || "30"; }catch(e){ return "30"; } }
+function pickStart(){ const p = startPref(); return p==="rnd" ? 20 + Math.floor(Math.random()*41) : (+p||0); }
+function ytVid(v, sec){ return {videoId:v, startSeconds:sec}; }
 function loadCard(n){
   current = n;
   const c = CARDS[n-1];
+  cardStart = pickStart();
   $("home").hidden = true; $("game").hidden = false;
   $("cardno").textContent = "KARTA #" + String(n).padStart(3,"0");
   $("reveal").hidden = true; $("revealBtn").textContent = "Odkrýt";
@@ -195,7 +202,7 @@ function loadCard(n){
   spCur = null; spPos = 0; spDur = 0; spPlaying = false; cardMode = null; clearInterval(tick);
   if(ready && player.stopVideo) try{ player.stopVideo(); }catch(e){}
   if(src==="sp"){ if(spAuth){ status("Ťukni na desku a hádej"); spFind(n).catch(()=>{}); } else { status("Přihlas se ke Spotify (⚙)"); setTimeout(openSheet,300); } return; }
-  if(ready && c.v){ player.cueVideoById(c.v); status("Ťukni na desku a hádej"); }
+  if(ready && c.v){ player.cueVideoById(ytVid(c.v, cardStart)); status("Ťukni na desku a hádej"); }
   else status("Načítám přehrávač…");
 }
 
@@ -215,7 +222,7 @@ function onYouTubeIframeAPIReady(){
     width:200,height:200,
     playerVars:{playsinline:1,controls:0,disablekb:1,rel:0,fs:0,iv_load_policy:3},
     events:{
-      onReady:()=>{ ready = true; if(pendingPlay && cardMode==="yt" && current){ pendingPlay=false; player.loadVideoById(CARDS[current-1].v); } if(current && src!=="sp"){ player.cueVideoById(CARDS[current-1].v); status("Ťukni na desku a hádej"); if(pendingPlay){pendingPlay=false; player.playVideo();} } },
+      onReady:()=>{ ready = true; if(pendingPlay && cardMode==="yt" && current){ pendingPlay=false; player.loadVideoById(ytVid(CARDS[current-1].v, cardStart)); } if(current && src!=="sp"){ player.cueVideoById(ytVid(CARDS[current-1].v, cardStart)); status("Ťukni na desku a hádej"); if(pendingPlay){pendingPlay=false; player.playVideo();} } },
       onStateChange:e=>{
         const playing = e.data === YT.PlayerState.PLAYING;
         setIcon(playing);
@@ -249,7 +256,7 @@ $("play").onclick = ()=>{
   const want = CARDS[current-1].v;
   if(!want){ status("Tahle karta jde pustit jen přes Spotify (⚙).", true); return; }
   let vid = ""; try{ vid = (player.getVideoData && player.getVideoData().video_id) || ""; }catch(e){}
-  if(vid !== want){ player.loadVideoById(want); status("Načítám…"); return; }
+  if(vid !== want){ player.loadVideoById(ytVid(want, cardStart)); status("Načítám…"); return; }
   const s = player.getPlayerState();
   if(s === YT.PlayerState.PLAYING) player.pauseVideo(); else player.playVideo();
 };
@@ -457,9 +464,10 @@ async function spPlayCurrent(fromStart){
   status("Hledám na Spotify…");
   let hit;
   try{ hit = await spFind(n); }catch(e){ if(e instanceof RateErr){ hit = null; } else { if(e.message==="login"){ status("Přihlas se ke Spotify (⚙)", true); openSheet(); return; } throw e; } }
-  if(!hit){ if(!CARDS[n-1].v){ status("Tuhle písničku se nepodařilo pustit. Zkus to znovu.", true); return; } cardMode = "yt"; status("Na Spotify není – hraju z YouTube"); if(ready){ player.loadVideoById(CARDS[n-1].v); } else pendingPlay = true; return; }
+  if(!hit){ if(!CARDS[n-1].v){ status("Tuhle písničku se nepodařilo pustit. Zkus to znovu.", true); return; } cardMode = "yt"; status("Na Spotify není – hraju z YouTube"); if(ready){ player.loadVideoById(ytVid(CARDS[n-1].v, cardStart)); } else pendingPlay = true; return; }
   const resume = spCur === hit.u && !fromStart;
-  const body = resume ? undefined : {uris:[hit.u], position_ms:0};
+  const posMs = fromStart ? 0 : cardStart*1000;
+  const body = resume ? undefined : {uris:[hit.u], position_ms:posMs};
   const playOn = id => api("PUT", "/me/player/play"+(id ? "?device_id="+encodeURIComponent(id) : ""), body);
   let r = await playOn(ls.get("spDev"));
   if(!r.ok && r.status !== 202){
@@ -475,14 +483,14 @@ async function spPlayCurrent(fromStart){
     for(const d of ds.slice(0,3)){
       await api("PUT","/me/player",{device_ids:[d.id], play:false});
       await new Promise(z=>setTimeout(z,700));
-      r = await api("PUT", "/me/player/play?device_id="+encodeURIComponent(d.id), {uris:[hit.u], position_ms:0});
+      r = await api("PUT", "/me/player/play?device_id="+encodeURIComponent(d.id), {uris:[hit.u], position_ms:posMs});
       if(r.ok || r.status===202){ if(!pref) ls.set("spDev", null); break; }
-      if(r.status>=500){ await new Promise(z=>setTimeout(z,1200)); r = await api("PUT", "/me/player/play?device_id="+encodeURIComponent(d.id), {uris:[hit.u], position_ms:0}); if(r.ok || r.status===202) break; }
+      if(r.status>=500){ await new Promise(z=>setTimeout(z,1200)); r = await api("PUT", "/me/player/play?device_id="+encodeURIComponent(d.id), {uris:[hit.u], position_ms:posMs}); if(r.ok || r.status===202) break; }
     }
     if(!r.ok && r.status !== 202 && !resume){ spCur = null; }
   }
   if(!r.ok && r.status !== 202){ let m=""; try{ m=(await r.json()).error.message; }catch(e){} status(r.status>=500 ? 'Spotify neodpovídá. <a class="ext" href="spotify:">Otevři aplikaci Spotify</a>, pusť v ní cokoli, vrať se a ťukni znovu.' : "Spotify: " + (m||r.status), true); return; }
-  if(spCur !== hit.u || fromStart){ spPos = 0; }
+  if(spCur !== hit.u || fromStart){ spPos = posMs; }
   spCur = hit.u; spDur = hit.d; spT0 = Date.now(); spPlaying = true;
   setIcon(true); status("Hraje… Kdy to vyšlo?"); keepAwake(); startSpTick();
 }
@@ -522,6 +530,7 @@ async function loadDevices(){
   }catch(e){}
 }
 function renderSettings(){
+  const sp = startPref(); document.querySelectorAll("#startSeg button").forEach(b=>b.classList.toggle("on", b.dataset.s===sp));
   $("srcSp").classList.toggle("on", src==="sp"); $("srcYt").classList.toggle("on", src==="yt");
   $("spBox").hidden = src!=="sp";
   $("cidRow").hidden = false;
@@ -543,6 +552,7 @@ $("sheetClose").onclick = ()=>{ $("sheet").hidden = true; if(current) status("Ť
 $("sheet").onclick = e=>{ if(e.target.id==="sheet") $("sheet").hidden = true; };
 $("srcSp").onclick = ()=>setSrc("sp");
 $("srcYt").onclick = ()=>setSrc("yt");
+document.querySelectorAll("#startSeg button").forEach(b=> b.onclick = ()=>{ try{ localStorage.setItem("startAt", b.dataset.s); }catch(e){} renderSettings(); });
 $("cid").oninput = e=> ls.set("spCid", e.target.value.trim());
 $("spLogin").onclick = ()=>{ if(spAuth){ spAuth=null; saveAuth(); renderSettings(); } else spLogin(); };
 $("dev").onchange = e=> ls.set("spDev", e.target.value || null);
