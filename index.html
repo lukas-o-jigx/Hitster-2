@@ -497,7 +497,7 @@ async function spPlayCurrent(fromStart){
   if(!hit){ if(!CARDS[n-1].v){ status("Tuhle písničku se nepodařilo pustit. Zkus to znovu.", true); return; } cardMode = "yt"; status("Na Spotify není – hraju z YouTube"); if(ready){ player.loadVideoById(ytVid(CARDS[n-1].v, cardStart)); } else pendingPlay = true; return; }
   const resume = spCur === hit.u && !fromStart;
   const posMs = fromStart ? 0 : cardStart*1000;
-  const body = resume ? undefined : {uris:[hit.u], position_ms:posMs};
+  const body = {uris:[hit.u], position_ms: resume ? Math.round(spPos) : posMs};
   const playOn = id => api("PUT", "/me/player/play"+(id ? "?device_id="+encodeURIComponent(id) : ""), body);
   let r = await playOn(ls.get("spDev"));
   if(!r.ok && r.status !== 202){
@@ -527,10 +527,19 @@ async function spPlayCurrent(fromStart){
   if(spCur !== hit.u || fromStart){ spPos = posMs; }
   spCur = hit.u; spDur = hit.d; spT0 = Date.now(); spPlaying = true;
   setIcon(true); status("Hraje… Kdy to vyšlo?"); keepAwake(); startSpTick();
+  // repeat the song so Spotify never autoplays a "similar" track that would reveal answers
+  api("PUT","/me/player/repeat?state=track"+(ls.get("spDev")?"&device_id="+encodeURIComponent(ls.get("spDev")):"")).catch(()=>{});
 }
+// iPhone/Android suspend a paused Spotify app within seconds and it then can't be started remotely.
+// So instead of pausing we play a silent track on repeat: Spotify stays awake and nothing is heard.
+const SILENCE = "spotify:track:2ENBkBFljhgXO9RR3kBsyb";
 async function spPause(){
   spPos += Date.now()-spT0; spPlaying = false; setIcon(false); status("Pozastaveno");
-  try{ await api("PUT","/me/player/pause"+devParam()); }catch(e){}
+  try{
+    const r = await api("PUT","/me/player/play"+devParam(), {uris:[SILENCE], position_ms:0});
+    if(!r.ok && r.status!==202) await api("PUT","/me/player/pause"+devParam());
+    else api("PUT","/me/player/repeat?state=track"+(ls.get("spDev")?"&device_id="+encodeURIComponent(ls.get("spDev")):"")).catch(()=>{});
+  }catch(e){}
 }
 function startSpTick(){
   clearInterval(tick);
