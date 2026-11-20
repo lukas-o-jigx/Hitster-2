@@ -270,9 +270,13 @@ $("play").onclick = ()=>{
   const s = player.getPlayerState();
   if(s === YT.PlayerState.PLAYING) player.pauseVideo(); else player.playVideo();
 };
+function ytNudge(){
+  // browsers (esp. iPhone) may block sound that starts without a tap: ask for one tap
+  setTimeout(()=>{ try{ if(cardMode==="yt" || src==="yt"){ const st = player.getPlayerState(); if(st !== YT.PlayerState.PLAYING && st !== YT.PlayerState.BUFFERING){ status("Ťukni na desku ▶ – prohlížeč nepustil zvuk sám.", true); } } }catch(e){} }, 3000);
+}
 function autoPlay(){
   if(src==="sp" && !spAuth) return;
-  setTimeout(()=>{ try{ $("play").onclick(); }catch(e){} }, 150);
+  setTimeout(()=>{ try{ $("play").onclick(); if(src==="yt") ytNudge(); }catch(e){} }, 150);
 }
 $("restart").onclick = ()=>{ if(src==="sp" && cardMode!=="yt"){ spPlayCurrent(true).catch(e=>status("Spotify chyba: "+e.message,true)); return; } if(ready){ player.seekTo(0,true); player.playVideo(); } };
 $("fwd").onclick = async ()=>{
@@ -506,7 +510,7 @@ async function spPlayCurrent(fromStart){
     if(!ds.length){ ls.set("spDev", null); let who=""; try{ const me = await api("GET","/me"); if(me.ok){ const j = await me.json(); who = j.display_name || j.id; if(j.product && j.product!=="premium") who += " (nemá Premium!)"; } }catch(e){}
       const msg = 'Spotify nevidí žádné zařízení' + (who ? ' u účtu <b>'+who+'</b>' : '') + '. <a class="ext" href="spotify:">Otevři aplikaci Spotify</a> (stejný účet!), pusť v ní cokoli a ťukni na desku znovu.';
       window.__retrySp = true;
-      if(CARDS[n-1].v && ready){ cardMode = "yt"; player.loadVideoById(ytVid(CARDS[n-1].v, cardStart)); setTimeout(()=>status("Hraju zatím z YouTube. " + msg), 50); return; }
+      if(CARDS[n-1].v && ready){ cardMode = "yt"; player.loadVideoById(ytVid(CARDS[n-1].v, cardStart)); setTimeout(()=>status("Hraju zatím z YouTube. " + msg), 50); ytNudge(); return; }
       status(msg, true); return; }
     const pref = ls.get("spDev");
     ds.sort((a,b)=> (b.id===pref)-(a.id===pref) || (b.is_active-a.is_active) || ((b.type==="Smartphone")-(a.type==="Smartphone")));
